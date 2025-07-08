@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Proposal - ProposalGPT{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <h2 class="text-2xl font-extrabold text-gray-900 mb-4">Generate a New Proposal</h2>
+    <form id="generate-form" class="space-y-6">
+        <div>
+            <label for="job-link" class="block text-sm font-medium text-gray-700">Job Link (optional)</label>
+            <input id="job-link" name="job-link" type="url" class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
+        </div>
+        <div>
+            <label for="job-description" class="block text-sm font-medium text-gray-700">Job Description</label>
+            <textarea id="job-description" name="job-description" rows="4" required class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"></textarea>
+        </div>
+        <div>
+            <label for="tone-selector" class="block text-sm font-medium text-gray-700">Preferred Tone</label>
+            <select id="tone-selector" name="tone-selector" class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
+                <option>Professional</option>
+                <option>Friendly</option>
+                <option>Persuasive</option>
+            </select>
+        </div>
+        <div>
+            <button type="submit" id="generate-btn" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                Generate Proposal
+            </button>
+        </div>
+    </form>
+    
+    <div id="proposal-output" class="mt-6 hidden">
+        <h3 class="text-lg font-bold text-gray-900 mb-2">Generated Proposal</h3>
+        <div id="proposal-content" class="p-4 bg-gray-100 rounded-md whitespace-pre-wrap border"></div>
+        <div class="mt-4 space-x-2">
+            <button id="save-proposal" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                Save Proposal
+            </button>
+            <button id="download-pdf" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                Download as PDF
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('generate-form');
+        const outputContainer = document.getElementById('proposal-output');
+        const outputContent = document.getElementById('proposal-content');
+        const generateBtn = document.getElementById('generate-btn');
+        let currentProposal = null;
+
+        // Load user's preferred tone from profile
+        const profile = JSON.parse(localStorage.getItem('freelancerProfile') || '{}');
+        if (profile.tone) {
+            document.getElementById('tone-selector').value = profile.tone;
+        }
+
+        form.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            generateBtn.textContent = 'Generating...';
+            generateBtn.disabled = true;
+
+            const jobDescription = document.getElementById('job-description').value;
+            const tone = document.getElementById('tone-selector').value;
+            const userProfile = JSON.parse(localStorage.getItem('freelancerProfile') || '{}');
+
+            try {
+                const response = await fetch('/generate-proposal', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        job_description: jobDescription,
+                        tone: tone,
+                        user_profile: userProfile
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    currentProposal = {
+                        id: Date.now().toString(),
+                        title: jobDescription.substring(0, 50) + '...',
+                        content: result.proposal,
+                        timestamp: result.timestamp,
+                        tone: tone,
+                        jobLink: document.getElementById('job-link').value
+                    };
+                    
+                    outputContent.textContent = result.proposal;
+                    outputContainer.classList.remove('hidden');
+                } else {
+                    alert('Error generating proposal: ' + result.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                generateBtn.textContent = 'Generate Proposal';
+                generateBtn.disabled = false;
+            }
+        });
+
+        document.getElementById('save-proposal').addEventListener('click', function() {
+            if (currentProposal) {
+                const proposals = JSON.parse(localStorage.getItem('proposals') || '[]');
+                proposals.push(currentProposal);
+                localStorage.setItem('proposals', JSON.stringify(proposals));
+                alert('Proposal saved successfully!');
+            }
+        });
+
+        document.getElementById('download-pdf').addEventListener('click', function() {
+            if (currentProposal) {
+                const element = document.createElement('div');
+                element.innerHTML = `
+                    <h1 style="font-size: 24px; font-weight: bold; margin-bottom: 20px;">Proposal</h1>
+                    <div style="white-space: pre-wrap; font-family: Arial, sans-serif; line-height: 1.6;">${currentProposal.content}</div>
+                `;
+                
+                html2pdf().from(element).save('proposal.pdf');
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Proposal History - ProposalGPT{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">Proposal History</h1>
+            <p class="text-gray-600">Manage your saved proposals</p>
+        </div>
+    </div>
+
+    <div id="proposals-container" class="space-y-4">
+        <!-- Proposals will be loaded here via JavaScript -->
+    </div>
+
+    <!-- Empty state -->
+    <div id="empty-state" class="text-center py-12 hidden">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No proposals</h3>
+        <p class="mt-1 text-sm text-gray-500">Get started by generating your first proposal.</p>
+        <div class="mt-6">
+            <a href="{{ url_for('generate') }}" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                Generate Proposal
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="edit-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden">
+    <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Edit Proposal</h3>
+            <div class="mb-4">
+                <label for="edit-title" class="block text-sm font-medium text-gray-700">Title</label>
+                <input id="edit-title" type="text" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
+            </div>
+            <div class="mb-4">
+                <label for="edit-content" class="block text-sm font-medium text-gray-700">Content</label>
+                <textarea id="edit-content" rows="15" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"></textarea>
+            </div>
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-edit" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                    Cancel
+                </button>
+                <button id="save-edit" class="px-4 py-2 bg-primary text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let proposals = [];
+    let editingProposalId = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadProposals();
+        
+        // Modal event listeners
+        document.getElementById('cancel-edit').addEventListener('click', closeEditModal);
+        document.getElementById('save-edit').addEventListener('click', saveEdit);
+        
+        // Close modal when clicking outside
+        document.getElementById('edit-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeEditModal();
+            }
+        });
+    });
+
+    function loadProposals() {
+        proposals = JSON.parse(localStorage.getItem('proposals') || '[]');
+        renderProposals();
+    }
+
+    function renderProposals() {
+        const container = document.getElementById('proposals-container');
+        const emptyState = document.getElementById('empty-state');
+        
+        if (proposals.length === 0) {
+            container.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        
+        emptyState.classList.add('hidden');
+        
+        container.innerHTML = proposals.map(proposal => `
+            <div class="bg-white shadow overflow-hidden sm:rounded-md">
+                <div class="px-4 py-4 sm:px-6">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-lg font-medium text-gray-900 truncate">
+                                ${proposal.title || 'Untitled Proposal'}
+                            </h3>
+                            <p class="text-sm text-gray-500">
+                                ${new Date(proposal.timestamp).toLocaleDateString()} • ${proposal.tone} tone
+                                ${proposal.jobLink ? `• <a href="${proposal.jobLink}" target="_blank" class="text-primary hover:text-blue-500">View Job</a>` : ''}
+                            </p>
+                        </div>
+                        <div class="flex-shrink-0 flex space-x-2">
+                            <button onclick="editProposal('${proposal.id}')" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-primary bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                                Edit
+                            </button>
+                            <button onclick="downloadProposal('${proposal.id}')" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                                PDF
+                            </button>
+                            <button onclick="deleteProposal('${proposal.id}')" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <p class="text-sm text-gray-700 line-clamp-3">
+                            ${proposal.content.substring(0, 200)}...
+                        </p>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function editProposal(id) {
+        const proposal = proposals.find(p => p.id === id);
+        if (!proposal) return;
+        
+        editingProposalId = id;
+        document.getElementById('edit-title').value = proposal.title || '';
+        document.getElementById('edit-content').value = proposal.content || '';
+        document.getElementById('edit-modal').classList.remove('hidden');
+    }
+
+    function closeEditModal() {
+        document.getElementById('edit-modal').classList.add('hidden');
+        editingProposalId = null;
+    }
+
+    function saveEdit() {
+        if (!editingProposalId) return;
+        
+        const title = document.getElementById('edit-title').value;
+        const content = document.getElementById('edit-content').value;
+        
+        const proposalIndex = proposals.findIndex(p => p.id === editingProposalId);
+        if (proposalIndex !== -1) {
+            proposals[proposalIndex].title = title;
+            proposals[proposalIndex].content = content;
+            
+            localStorage.setItem('proposals', JSON.stringify(proposals));
+            renderProposals();
+            closeEditModal();
+            alert('Proposal updated successfully!');
+        }
+    }
+
+    function downloadProposal(id) {
+        const proposal = proposals.find(p => p.id === id);
+        if (!proposal) return;
+        
+        const element = document.createElement('div');
+        element.innerHTML = `
+            <h1 style="font-size: 24px; font-weight: bold; margin-bottom: 20px;">${proposal.title || 'Proposal'}</h1>
+            <div style="white-space: pre-wrap; font-family: Arial, sans-serif; line-height: 1.6;">${proposal.content}</div>
+        `;
+        
+        html2pdf().from(element).save(`${proposal.title || 'proposal'}.pdf`);
+    }
+
+    function deleteProposal(id) {
+        if (confirm('Are you sure you want to delete this proposal?')) {
+            proposals = proposals.filter(p => p.id !== id);
+            localStorage.setItem('proposals', JSON.stringify(proposals));
+            renderProposals();
+            alert('Proposal deleted successfully!');
+        }
+    }
+</script>
+{% endblock %}
